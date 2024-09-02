@@ -1,6 +1,12 @@
 package com.robbiebowman
 
 import com.robbiebowman.claude.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import java.time.Instant
+import kotlin.coroutines.CoroutineContext
 
 class ElementDescriber(claudeApiKey: String) {
 
@@ -9,7 +15,8 @@ class ElementDescriber(claudeApiKey: String) {
         .withTool(::describeElements)
         .withMaxTokens(8192)
         .withModel("claude-3-5-sonnet-20240620")
-        .withSystemPrompt("""
+        .withSystemPrompt(
+            """
             You are part of a fun online game where the user is viewing the Periodic Table of Elements and they have the
             ability to ask it questions. Your job is to answer that question for each of the 118 known elements.
             
@@ -32,31 +39,59 @@ class ElementDescriber(claudeApiKey: String) {
             This is a game for my portfolio website. It's not serious and you can provide dry humor in the 
             justifications and entertain silly questions from the user.
             
-            Remember to provide answers for all 118 elements.
-        """.trimIndent())
+            Because of max token constraints in the Claude API, the call will be chunked into 4 concurrent calls. Each call
+            will specify the range of elements it requires answers for. If you get the range "1 - 30" make sure to 
+            include answers for both HYDROGEN (1) and ZINC (30).
+        """.trimIndent()
+        )
         .build()
 
-    data class Description(val atomicNumber: Int, val elementName: PeriodicElement, val answerValue: String, val justification: String?)
+    data class Description(
+        val atomicNumber: Int,
+        val elementName: PeriodicElement,
+        val answerValue: String,
+        val justification: String?
+    )
 
     data class PeriodicTableDescription(val elementDescriptions: List<Description>)
 
     private fun describeElements(allElements: PeriodicTableDescription) {}
 
-    private fun invokeToolUse(prompt: String): PeriodicTableDescription {
-        val response = claudeClient.getChatCompletion(
-            listOf(
-                SerializableMessage(
-                    Role.User, listOf(
-                        MessageContent.TextContent(prompt)
+    private suspend fun invokeToolUse(prompt: String): PeriodicTableDescription {
+        return coroutineScope {
+            val descriptions = (1..118).chunked(30).map { range ->
+                val first = range.first()
+                val last = range.last()
+                val chunkedPrompt = prompt + """
+                
+                RANGE: $first - $last (i.e. ${PeriodicElement.lookUp[first]!!.name} - ${PeriodicElement.lookUp[last]!!.name})
+            """.trimIndent()
+                async(Dispatchers.Default) {
+                    println("Starting $first to $last at ${Instant.now().epochSecond}")
+                    val response = claudeClient.getChatCompletion(
+                        listOf(
+                            SerializableMessage(
+                                Role.User, listOf(
+                                    MessageContent.TextContent(chunkedPrompt)
+                                )
+                            )
+                        )
                     )
-                )
-            )
-        )
-        val toolUse = response.content.first { it is MessageContent.ToolUse } as MessageContent.ToolUse
-        return claudeClient.derserializeToolUse(toolUse.input["allElements"]!!, PeriodicTableDescription::class.java)
+                    val toolUse = response.content.first { it is MessageContent.ToolUse } as MessageContent.ToolUse
+                    claudeClient.derserializeToolUse(
+                        toolUse.input["allElements"]!!,
+                        PeriodicTableDescription::class.java
+                    ).elementDescriptions.also {
+                        println("Finished $first to $last at ${Instant.now().epochSecond}")
+                    }
+                }
+            }.awaitAll().flatten()
+            println("Finished all at ${Instant.now().epochSecond}")
+            PeriodicTableDescription(descriptions)
+        }
     }
 
-    fun rateElements(prompt: String, rangeMin: Int, rangeMax: Int): PeriodicTableDescription {
+    suspend fun rateElements(prompt: String, rangeMin: Int, rangeMax: Int): PeriodicTableDescription {
         val formattedPrompt = """
                         The user's prompt is "$prompt". The user has selected to RATE the elements. The top of the range
                         is $rangeMax. The bottom of the range is $rangeMin.
@@ -64,15 +99,15 @@ class ElementDescriber(claudeApiKey: String) {
         return invokeToolUse(formattedPrompt)
     }
 
-    fun categoriseElements(prompt: String, categories: List<String>): PeriodicTableDescription {
+    suspend fun categoriseElements(prompt: String, categories: List<String>): PeriodicTableDescription {
         val formattedPrompt = """
                         The user's prompt is "$prompt". The user has selected to CATEGORIZE the elements. The categories
-                        are: ${categories.joinToString() { "\"$it\"" }}
+                        are: ${categories.joinToString() { "\"$it\"" }}.
                     """.trimIndent()
         return invokeToolUse(formattedPrompt)
     }
 
-    fun askOpenQuestionOfElements(prompt: String): PeriodicTableDescription {
+    suspend fun askOpenQuestionOfElements(prompt: String): PeriodicTableDescription {
         val formattedPrompt = """
                         The user's prompt is "$prompt". The user has selected to OPEN_ANSWER the elements.
                     """.trimIndent()

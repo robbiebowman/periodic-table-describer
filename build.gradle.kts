@@ -12,6 +12,7 @@ repositories {
 
 dependencies {
     implementation("com.robbiebowman:claude-sdk:0.0.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
 }
 

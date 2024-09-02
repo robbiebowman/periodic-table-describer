@@ -118,5 +118,9 @@ enum class PeriodicElement(val symbol: String, val atomicNumber: Int, val readab
     MOSCOVIUM("Mc", 115, "Moscovium"),
     LIVERMORIUM("Lv", 116, "Livermorium"),
     TENNESSINE("Ts", 117, "Tennessine"),
-    OGANESSON("Og", 118, "Oganesson")
+    OGANESSON("Og", 118, "Oganesson");
+
+    companion object {
+        val lookUp = entries.associateBy { it.atomicNumber }
+    }
 }
