@@ -67,7 +67,6 @@ class ElementDescriber(claudeApiKey: String) {
                 RANGE: $first - $last (i.e. ${PeriodicElement.lookUp[first]!!.name} - ${PeriodicElement.lookUp[last]!!.name})
             """.trimIndent()
                 async(Dispatchers.Default) {
-                    println("Starting $first to $last at ${Instant.now().epochSecond}")
                     val response = claudeClient.getChatCompletion(
                         listOf(
                             SerializableMessage(
@@ -81,12 +80,9 @@ class ElementDescriber(claudeApiKey: String) {
                     claudeClient.derserializeToolUse(
                         toolUse.input["allElements"]!!,
                         PeriodicTableDescription::class.java
-                    ).elementDescriptions.also {
-                        println("Finished $first to $last at ${Instant.now().epochSecond}")
-                    }
+                    ).elementDescriptions
                 }
             }.awaitAll().flatten()
-            println("Finished all at ${Instant.now().epochSecond}")
             PeriodicTableDescription(descriptions)
         }
     }
