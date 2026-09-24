@@ -14,7 +14,8 @@ class ElementDescriber(claudeApiKey: String) {
         .withApiKey(claudeApiKey)
         .withTool(::describeElements)
         .withMaxTokens(8192)
-        .withModel("claude-3-5-sonnet-20240620")
+        .withModel("claude-sonnet-5")
+        .withMapper(claudeMapper())
         .withSystemPrompt(
             """
             You are part of a fun online game where the user is viewing the Periodic Table of Elements and they have the
@@ -42,6 +43,8 @@ class ElementDescriber(claudeApiKey: String) {
             Because of max token constraints in the Claude API, the call will be chunked into 4 concurrent calls. Each call
             will specify the range of elements it requires answers for. If you get the range "1 - 30" make sure to 
             include answers for both HYDROGEN (1) and ZINC (30).
+
+            Return the answers by calling describeElements.
         """.trimIndent()
         )
         .build()
